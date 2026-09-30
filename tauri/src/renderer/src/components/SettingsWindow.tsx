@@ -4,6 +4,8 @@ import { ipc } from '../lib/ipc'
 import { useSettingsStore } from '../stores/settingsStore'
 import { formatBytes } from '../lib/format'
 import { t } from '../lib/strings'
+import { DngLookPicker } from './DngLookPicker'
+import { DngPostProcessingField } from './DngPostProcessingField'
 import { Button } from './ui/button'
 import { Row, Section, ToggleRow } from './ui/settingsLayout'
 
@@ -36,6 +38,20 @@ export function SettingsWindow(): React.JSX.Element {
   return (
     <div className="h-full overflow-y-auto bg-neutral-950 px-6 py-5 text-neutral-100">
       <div className="mx-auto flex max-w-xl flex-col gap-6">
+        <Section title={t('settings.dng_look')}>
+          <DngLookPicker
+            value={settings.dngLook}
+            onChange={(dngLook) => void update({ dngLook })}
+          />
+        </Section>
+
+        <Section title={t('settings.dng_post_processing')}>
+          <DngPostProcessingField
+            value={settings.dngPostProcessingCommand}
+            onChange={(dngPostProcessingCommand) => void update({ dngPostProcessingCommand })}
+          />
+        </Section>
+
         {/* Debug */}
         <Section title={t('settings.section.debug')}>
           <ToggleRow

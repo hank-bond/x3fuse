@@ -1,4 +1,14 @@
-import { chmod, lstat, mkdtemp, mkdir, writeFile, readFile, readlink, rm, symlink } from 'node:fs/promises'
+import {
+  chmod,
+  lstat,
+  mkdtemp,
+  mkdir,
+  writeFile,
+  readFile,
+  readlink,
+  rm,
+  symlink
+} from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
@@ -37,6 +47,8 @@ it('creates fresh ZIPs with complete native layouts, launch instructions, and Un
     await file('src-tauri/resources/exiftool/exiftool.exe')
     await file('src-tauri/resources/exiftool/lib/Image/ExifTool.pm')
     await file('src-tauri/resources/exiftool/exiftool_files/perl532.dll')
+    const look = 'profiles/merrill_spp_1_0.dcp'
+    await file(`src-tauri/resources/${look}`, 'look fixture')
     const opcode = 'DP2M_FF_DNG_Opcodelist3_5.6'
     await file(`src-tauri/resources/opcodes/${opcode}`)
     await file('src-tauri/target/release/x3fuse-tauri')
@@ -46,6 +58,7 @@ it('creates fresh ZIPs with complete native layouts, launch instructions, and Un
     await file(`${mac}/Resources/resources/exiftool/exiftool`)
     await file(`${mac}/Resources/resources/exiftool/lib/Image/ExifTool.pm`)
     await file(`${mac}/Resources/resources/opcodes/${opcode}`)
+    await file(`${mac}/Resources/resources/${look}`, 'look fixture')
     if (!windows) {
       await chmod(join(root, 'src-tauri/target/release/x3fuse-tauri'), 0o755)
       await chmod(join(root, mac, 'MacOS/x3fuse-tauri'), 0o755)
@@ -58,7 +71,8 @@ it('creates fresh ZIPs with complete native layouts, launch instructions, and Un
       ['win32', 'windows', 'x64'],
       ['linux', 'linux', 'x64']
     ]) {
-      const sourceResources = platform === 'darwin' ? `${mac}/Resources/resources` : 'src-tauri/resources'
+      const sourceResources =
+        platform === 'darwin' ? `${mac}/Resources/resources` : 'src-tauri/resources'
       await file(`${sourceResources}/obsolete.txt`)
       const archive = await packageArtifact(root, platform, arch)
       const name = `x3fuse-alpha-${os}-${arch}`
@@ -79,6 +93,7 @@ it('creates fresh ZIPs with complete native layouts, launch instructions, and Un
             ? 'resources/'
             : 'lib/x3fuse-tauri/resources/'
       expect(entries).toContain(prefix + binary)
+      expect(entries).toContain(prefix + resources + look)
       expect(entries).toContain(prefix + resources + `opcodes/${opcode}`)
       expect(entries).toContain(
         prefix + resources + 'exiftool/' + (platform === 'win32' ? 'exiftool.exe' : 'exiftool')
@@ -101,6 +116,7 @@ it('creates fresh ZIPs with complete native layouts, launch instructions, and Un
       } else {
         execFileSync('unzip', ['-q', archive, '-d', extracted])
       }
+      expect(await readFile(join(extracted, name, resources, look), 'utf8')).toBe('look fixture')
       const readme = await readFile(join(extracted, name, 'README.txt'), 'utf8')
       expect(readme).toContain('X3Fuse alpha 0.1.0')
       expect(readme).toContain('No automatic updates.')
@@ -118,6 +134,9 @@ it('creates fresh ZIPs with complete native layouts, launch instructions, and Un
       expect(await packageArtifact(root, platform, arch)).toBe(archive)
       expect(entriesIn(archive)).not.toContain('obsolete.txt')
     }
+    await file(`src-tauri/resources/${look}`, '')
+    await expect(packageArtifact(root, 'linux', 'x64')).rejects.toThrow('Bundled DNG look is empty')
+    await file(`src-tauri/resources/${look}`, 'look fixture')
     await rm(join(root, 'src-tauri/resources/opcodes', opcode))
     await mkdir(join(root, 'src-tauri/resources/opcodes', opcode))
     await expect(packageArtifact(root, 'linux', 'x64')).rejects.toThrow('Opcode data is missing')

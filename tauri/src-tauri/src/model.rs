@@ -50,6 +50,25 @@ pub enum ColorProfile {
     None,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", content = "path", rename_all = "camelCase")]
+pub enum DngLook {
+    #[default]
+    None,
+    MerrillSpp10,
+    Custom(PathBuf),
+}
+
+impl DngLook {
+    pub fn path(&self, resources: &Path) -> Option<PathBuf> {
+        match self {
+            Self::None => None,
+            Self::MerrillSpp10 => Some(resources.join("profiles/merrill_spp_1_0.dcp")),
+            Self::Custom(path) => Some(path.clone()),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BatchSettings {
@@ -62,6 +81,10 @@ pub struct BatchSettings {
     pub denoise_intensity: u8,
     pub color_profile: ColorProfile,
     pub dng_highlight_recovery: bool,
+    #[serde(default)]
+    pub dng_look: DngLook,
+    #[serde(default)]
+    pub dng_post_processing_command: String,
     pub cineon: bool,
     pub output_directory: Option<PathBuf>,
     pub concurrency: u8,
@@ -77,6 +100,8 @@ impl Default for BatchSettings {
             denoise_intensity: 10,
             color_profile: ColorProfile::Srgb,
             dng_highlight_recovery: false,
+            dng_look: DngLook::None,
+            dng_post_processing_command: String::new(),
             cineon: false,
             output_directory: None,
             concurrency: 0,
@@ -90,6 +115,14 @@ impl BatchSettings {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        if self.dng_post_processing_command.contains('\0') {
+            return Err("Post-processing command contains a NUL character".into());
+        }
+        if let DngLook::Custom(path) = &self.dng_look {
+            if !path.is_absolute() {
+                return Err("DNG look must use an absolute file path".into());
+            }
+        }
         if self.denoise_intensity > 10
             || self.concurrency > 8
             || !(1..=100).contains(&self.jpeg_quality)

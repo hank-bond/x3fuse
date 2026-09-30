@@ -262,6 +262,25 @@ pub async fn dialog_pick_output_dir(
 }
 
 #[tauri::command]
+pub async fn dialog_pick_dng_look(
+    app: AppHandle,
+    window: WebviewWindow,
+) -> Result<Option<PathBuf>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_parent(&window)
+            .set_title(crate::menu::translate("settings.dng_look"))
+            .add_filter("DCP", &["dcp", "DCP"])
+            .blocking_pick_file()
+            .map(|p| p.into_path().map_err(|e| e.to_string()))
+            .transpose()
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub async fn shell_reveal(app: AppHandle, payload: PathRequest) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         if !payload.path.is_absolute() || !payload.path.exists() {

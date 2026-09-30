@@ -36,6 +36,8 @@ export const OUTPUT_EXTENSION: Record<OutputFormat, string> = {
   tiff: '.tif'
 }
 
+export type DngLook = { kind: 'none' } | { kind: 'merrillSpp10' } | { kind: 'custom'; path: string }
+
 /** Application preferences persisted and validated by the Rust backend. */
 export interface ConversionSettings {
   rendering: 'original' | 'rendered'
@@ -48,6 +50,8 @@ export interface ConversionSettings {
   colorProfile: ColorProfile
   /** Merrill-generation DNG highlight recovery. */
   dngHighlightRecovery: boolean
+  dngLook: DngLook
+  dngPostProcessingCommand: string
   /** Cineon-style flat tone curve for TIFF. */
   cineon: boolean
   /** null = write next to each input file; string = custom output directory. */
@@ -83,6 +87,8 @@ export const DEFAULT_SETTINGS: ConversionSettings = {
   denoiseIntensity: 10,
   colorProfile: 'sRGB',
   dngHighlightRecovery: false,
+  dngLook: { kind: 'none' },
+  dngPostProcessingCommand: '',
   cineon: false,
   outputDirectory: null,
   debugLoggingEnabled: false,
@@ -170,6 +176,8 @@ export type BatchConversionSettings = Pick<
   | 'denoiseIntensity'
   | 'colorProfile'
   | 'dngHighlightRecovery'
+  | 'dngLook'
+  | 'dngPostProcessingCommand'
   | 'cineon'
   | 'outputDirectory'
   | 'concurrency'
@@ -184,6 +192,8 @@ export function batchSettings(settings: BatchConversionSettings): BatchConversio
     denoiseIntensity,
     colorProfile,
     dngHighlightRecovery,
+    dngLook,
+    dngPostProcessingCommand,
     cineon,
     outputDirectory,
     concurrency
@@ -196,6 +206,8 @@ export function batchSettings(settings: BatchConversionSettings): BatchConversio
     denoiseIntensity,
     colorProfile,
     dngHighlightRecovery,
+    dngLook: { ...dngLook },
+    dngPostProcessingCommand,
     cineon,
     outputDirectory,
     concurrency

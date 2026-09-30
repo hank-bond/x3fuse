@@ -143,6 +143,7 @@ export interface IpcRequestMap {
 
   'dialog:pickFiles': { payload: void; result: string[] }
   'dialog:pickOutputDir': { payload: void; result: string | null }
+  'dialog:pickDngLook': { payload: void; result: string | null }
 
   /** Reveal a path in the OS file manager (Finder / Explorer / file-manager). */
   'shell:reveal': { payload: { path: string }; result: void }
@@ -167,8 +168,8 @@ export type IpcResult<C extends IpcRequestChannel> = IpcRequestMap[C]['result']
 /** Main -> renderer event channels: channel -> payload. */
 export interface IpcEventMap {
   'editor:closing': { quit: boolean }
-  /** `outputPath` is set on the terminal `completed` status (used for reveal). */
   'batch:started': { batchId: string; settings: BatchConversionSettings }
+  /** Published output remains available for reveal even when post-processing fails. */
   'file:status': {
     batchId: string
     id: string
@@ -208,6 +209,7 @@ export const IPC_REQUEST_CHANNELS: IpcRequestChannel[] = [
   'exif:full',
   'dialog:pickFiles',
   'dialog:pickOutputDir',
+  'dialog:pickDngLook',
   'shell:reveal',
   'window:openSettings',
   'logs:open',

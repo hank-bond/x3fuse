@@ -20,6 +20,8 @@ const sha256 = windows
 const marker = `${process.platform}:${version}:${sha256}`
 const destination = join(resources, 'exiftool')
 await mkdir(resources, { recursive: true })
+await rm(join(resources, 'profiles'), { recursive: true, force: true })
+await cp(join(root, 'profiles'), join(resources, 'profiles'), { recursive: true })
 await cp(join(root, '../X3Fuse/opcodes'), join(resources, 'opcodes'), { recursive: true })
 const coreNotices = join(resources, 'licenses/x3fuse-core')
 await mkdir(coreNotices, { recursive: true })
@@ -33,7 +35,7 @@ await rm(join(resources, 'licenses/x3f-render'), { recursive: true, force: true 
 await cp(join(renderer, 'licenses'), join(resources, 'licenses/x3f-render'), { recursive: true })
 await cp(join(renderer, 'NOTICE'), join(resources, 'licenses/x3f-render/NOTICE'))
 
-if (await readFile(join(destination, '.version'), 'utf8').catch(() => '') !== marker) {
+if ((await readFile(join(destination, '.version'), 'utf8').catch(() => '')) !== marker) {
   const cache = join(root, '.cache')
   await mkdir(cache, { recursive: true })
   const archivePath = join(cache, archive)
@@ -52,7 +54,9 @@ if (await readFile(join(destination, '.version'), 'utf8').catch(() => '') !== ma
     execFileSync(tar, ['-xf', archivePath, '-C', temporary], { stdio: 'inherit' })
     async function findLauncher(dir) {
       const entries = await readdir(dir, { withFileTypes: true })
-      const launcher = entries.find((e) => e.isFile() && ['exiftool', 'exiftool(-k).exe', 'exiftool.exe'].includes(e.name))
+      const launcher = entries.find(
+        (e) => e.isFile() && ['exiftool', 'exiftool(-k).exe', 'exiftool.exe'].includes(e.name)
+      )
       if (launcher) return { directory: dir, launcher: launcher.name }
       for (const entry of entries.filter((e) => e.isDirectory())) {
         const found = await findLauncher(join(dir, entry.name))
@@ -64,8 +68,10 @@ if (await readFile(join(destination, '.version'), 'utf8').catch(() => '') !== ma
     if (!found) throw new Error('ExifTool archive does not contain its launcher')
     await rm(destination, { recursive: true, force: true })
     await cp(found.directory, destination, { recursive: true })
-    if (windows && found.launcher !== 'exiftool.exe') await rename(join(destination, found.launcher), join(destination, 'exiftool.exe'))
-    if (windows && !existsSync(join(destination, 'exiftool_files'))) throw new Error('Missing Windows ExifTool runtime')
+    if (windows && found.launcher !== 'exiftool.exe')
+      await rename(join(destination, found.launcher), join(destination, 'exiftool.exe'))
+    if (windows && !existsSync(join(destination, 'exiftool_files')))
+      throw new Error('Missing Windows ExifTool runtime')
     await writeFile(join(destination, '.version'), marker)
   } finally {
     await rm(temporary, { recursive: true, force: true })

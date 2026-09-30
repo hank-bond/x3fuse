@@ -10,7 +10,7 @@ use std::{
 use x3fuse_app::{
     conversion::{process_options, publish},
     metadata::ExifTool,
-    model::{BatchSettings, OutputFormat},
+    model::{BatchSettings, DngLook, OutputFormat},
     storage::Logs,
 };
 
@@ -24,6 +24,150 @@ fn fixture(key: &str) -> PathBuf {
         path.display()
     );
     path
+}
+
+#[test]
+#[ignore = "Requires X3FUSE_TEST_MERRILL and prepared resources"]
+fn dng_looks_survive_metadata_copy_and_preserve_calibration() {
+    let temporary = tempfile::tempdir().unwrap();
+    let input = temporary.path().join("写真 source.X3F");
+    std::fs::copy(fixture("X3FUSE_TEST_MERRILL"), &input).unwrap();
+    let resources = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources");
+    let profile = resources.join("profiles/merrill_spp_1_0.dcp");
+    let exif = ExifTool::new(
+        resources.join("exiftool"),
+        Arc::new(Logs::new(temporary.path().join("logs"))),
+    );
+    let runtime = tauri::async_runtime::handle();
+    let table = |path: &std::path::Path| {
+        runtime
+            .block_on(exif.run(
+                // ExifTool skips large arrays unless minor-error suppression is enabled.
+                vec![
+                    "-m".into(),
+                    "-b".into(),
+                    "-ProfileLookTableData".into(),
+                    path.into(),
+                ],
+                None,
+            ))
+            .unwrap()
+    };
+    let expected = table(&profile);
+    assert!(!expected.is_empty());
+    let mut baseline = None;
+    for (index, look) in [
+        DngLook::None,
+        DngLook::MerrillSpp10,
+        DngLook::Custom(profile),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let settings = BatchSettings {
+            dng_look: look,
+            denoise_intensity: 0,
+            ..Default::default()
+        };
+        let output = temporary.path().join(format!("look-{index}.dng"));
+        x3f_core::convert_file(
+            &input,
+            &output,
+            x3f_core::OutputFormat::Dng,
+            &process_options(&settings, resources.clone()),
+            &AtomicBool::new(false),
+            |_| {},
+        )
+        .unwrap();
+        runtime
+            .block_on(exif.copy_tags(&input, &output, &AtomicBool::new(false)))
+            .unwrap();
+        let actual = table(&output);
+        if index == 0 {
+            assert!(actual.is_empty());
+        } else {
+            assert_eq!(actual, expected);
+        }
+        let mut args: Vec<std::ffi::OsString> = [
+            "-json",
+            "-UniqueCameraModel",
+            "-ColorMatrix1",
+            "-ColorMatrix2",
+            "-ForwardMatrix1",
+            "-ForwardMatrix2",
+            "-AsShotNeutral",
+            "-BlackLevel",
+            "-WhiteLevel",
+        ]
+        .into_iter()
+        .map(Into::into)
+        .collect();
+        args.push(output.into());
+        let bytes = runtime.block_on(exif.run(args, None)).unwrap();
+        let mut tags: Vec<serde_json::Value> = serde_json::from_slice(&bytes).unwrap();
+        let tags = tags[0].as_object_mut().unwrap();
+        tags.remove("SourceFile");
+        assert!(tags.contains_key("ColorMatrix1"));
+        assert!(tags.contains_key("UniqueCameraModel"));
+        if let Some(baseline) = &baseline {
+            assert_eq!(tags, baseline);
+        } else {
+            baseline = Some(tags.clone());
+        }
+    }
+}
+
+#[test]
+#[ignore = "Requires X3FUSE_TEST_MERRILL, X3FUSE_TEST_POST_PROCESSING_COMMAND and prepared resources"]
+fn post_processing_uses_the_published_dng() {
+    use sha2::{Digest, Sha256};
+    let command = std::env::var("X3FUSE_TEST_POST_PROCESSING_COMMAND")
+        .expect("Set a trusted post-processing command explicitly");
+    assert!(!command.trim().is_empty());
+    let temporary = tempfile::tempdir().unwrap();
+    let input = temporary.path().join("写真 source.X3F");
+    std::fs::copy(fixture("X3FUSE_TEST_MERRILL"), &input).unwrap();
+    let source_hash = Sha256::digest(std::fs::read(&input).unwrap());
+    let resources = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources");
+    let exif = ExifTool::new(
+        resources.join("exiftool"),
+        Arc::new(Logs::new(temporary.path().join("logs"))),
+    );
+    let settings = BatchSettings {
+        dng_look: DngLook::MerrillSpp10,
+        dng_post_processing_command: command,
+        denoise_intensity: 0,
+        ..Default::default()
+    };
+    let staging = temporary.path().join("staged.dng");
+    let output = settings.output_path(&input).unwrap();
+    let cancel = AtomicBool::new(false);
+    x3f_core::convert_file(
+        &input,
+        &staging,
+        x3f_core::OutputFormat::Dng,
+        &process_options(&settings, resources.clone()),
+        &cancel,
+        |_| {},
+    )
+    .unwrap();
+    let runtime = tauri::async_runtime::handle();
+    runtime
+        .block_on(exif.copy_tags(&input, &staging, &cancel))
+        .unwrap();
+    publish(&staging, &output, false).unwrap();
+    assert!(!staging.exists());
+    runtime
+        .block_on(x3fuse_app::post_processing::apply(
+            &input, &output, &settings, &resources, &exif, &cancel,
+        ))
+        .unwrap();
+    assert!(std::fs::metadata(&output).unwrap().len() > 0);
+    assert_eq!(Sha256::digest(std::fs::read(&input).unwrap()), source_hash);
+    println!(
+        "{}",
+        std::fs::read_to_string(exif.logs.dir.join("conversion.log")).unwrap()
+    );
 }
 
 #[test]
@@ -65,7 +209,7 @@ fn real_conversion_metadata_previews_and_cancelled_publication() {
                 output_directory: Some(temporary.path().to_owned()),
                 ..Default::default()
             };
-            let options = process_options(&settings, resources.join("opcodes"));
+            let options = process_options(&settings, resources.clone());
             let staging = tempfile::tempdir_in(temporary.path()).unwrap();
             let output = staging
                 .path()
@@ -162,7 +306,7 @@ fn full_denoise_conversion_finishes_within_deadline() {
                 dng_highlight_recovery: true,
                 ..Default::default()
             };
-            let options = process_options(&settings, resources.join("opcodes"));
+            let options = process_options(&settings, resources.clone());
             let temporary = tempfile::tempdir().unwrap();
             let output = temporary
                 .path()

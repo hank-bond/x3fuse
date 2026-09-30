@@ -5,9 +5,10 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const tar = process.platform === 'win32'
-  ? join(process.env.SystemRoot || process.env.WINDIR || 'C:\\Windows', 'System32', 'tar.exe')
-  : 'tar'
+const tar =
+  process.platform === 'win32'
+    ? join(process.env.SystemRoot || process.env.WINDIR || 'C:\\Windows', 'System32', 'tar.exe')
+    : 'tar'
 
 /** Stage the complete native application, then ZIP it with the host's archive tool. */
 export async function packageArtifact(
@@ -20,6 +21,8 @@ export async function packageArtifact(
   const config = JSON.parse(await readFile(join(root, 'src-tauri/tauri.conf.json'), 'utf8'))
   const release = join(root, 'src-tauri/target/release')
   const resources = join(root, 'src-tauri/resources')
+  const look = 'profiles/merrill_spp_1_0.dcp'
+  if (!(await stat(join(resources, look))).size) throw new Error('Bundled DNG look is empty')
   const windows = platform === 'win32'
   const launcher = windows ? 'exiftool.exe' : 'exiftool'
   if (!(await stat(join(resources, 'exiftool', launcher))).size)
@@ -46,6 +49,8 @@ export async function packageArtifact(
       await stat(join(source, 'Contents/Resources/resources/exiftool', launcher))
       await stat(join(source, 'Contents/Resources/resources/exiftool/lib'))
       await stat(join(source, 'Contents/Resources/resources/opcodes'))
+      if (!(await stat(join(source, 'Contents/Resources/resources', look))).size)
+        throw new Error('Bundled DNG look is empty')
       if (process.platform === 'darwin') {
         // Preserve the stapled ticket, extended attributes, and bundle symlinks.
         execFileSync('ditto', [source, join(stage, bundle)], { stdio: 'inherit' })
@@ -58,7 +63,10 @@ export async function packageArtifact(
       const resourceDir = windows ? stage : join(stage, 'lib/x3fuse-tauri')
       await mkdir(binaryDir, { recursive: true })
       await cp(join(release, executable), join(binaryDir, executable))
-      await cp(resources, join(resourceDir, 'resources'), { recursive: true, verbatimSymlinks: true })
+      await cp(resources, join(resourceDir, 'resources'), {
+        recursive: true,
+        verbatimSymlinks: true
+      })
     }
     await cp(join(root, '../LICENSE'), join(stage, 'LICENSE'))
     const launch =
@@ -74,7 +82,9 @@ export async function packageArtifact(
     await mkdir(dirname(output), { recursive: true })
     await rm(output, { force: true })
     if (process.platform === 'darwin') {
-      execFileSync('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', stage, output], { stdio: 'inherit' })
+      execFileSync('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', stage, output], {
+        stdio: 'inherit'
+      })
     } else if (process.platform === 'win32') {
       execFileSync(tar, ['-a', '-cf', output, '-C', temporary, name], { stdio: 'inherit' })
     } else {

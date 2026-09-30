@@ -13,6 +13,8 @@ import { appInfo } from '../lib/appInfo'
 import { ipc } from '../lib/ipc'
 import { basename } from '../lib/path'
 import { t } from '../lib/strings'
+import { DngLookPicker } from './DngLookPicker'
+import { DngPostProcessingField } from './DngPostProcessingField'
 import { Button } from './ui/button'
 import { Slider } from './ui/slider'
 import { Select } from './ui/select'
@@ -185,6 +187,10 @@ export function ConversionSettingsForm({
             />
           )}
 
+          {!rendered && format === 'dng' && (
+            <DngLookPicker value={settings.dngLook} onChange={(dngLook) => update({ dngLook })} />
+          )}
+
           {!rendered && shouldShowCineonOption(format) && (
             <ToggleRow
               labelClassName="text-xs text-neutral-300"
@@ -276,6 +282,14 @@ export function ConversionSettingsForm({
           )}
         </div>
       </Section>
+      {!rendered && format === 'dng' && (
+        <Section title={t('settings.dng_post_processing')}>
+          <DngPostProcessingField
+            value={settings.dngPostProcessingCommand}
+            onChange={(dngPostProcessingCommand) => update({ dngPostProcessingCommand })}
+          />
+        </Section>
+      )}
     </>
   )
 }

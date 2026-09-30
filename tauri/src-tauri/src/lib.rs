@@ -5,6 +5,7 @@ mod edits;
 mod menu;
 pub mod metadata;
 pub mod model;
+pub mod post_processing;
 pub mod preview;
 #[cfg(debug_assertions)]
 mod smoke;
@@ -253,6 +254,7 @@ pub fn run() {
             commands::exif_full,
             commands::dialog_pick_files,
             commands::dialog_pick_output_dir,
+            commands::dialog_pick_dng_look,
             commands::shell_reveal,
             commands::window_open_settings,
             commands::logs_open,
