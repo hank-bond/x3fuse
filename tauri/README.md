@@ -20,18 +20,10 @@ Install Node.js 22 LTS, the stable Rust toolchain, and the
 - Linux x64: GTK 3, WebKitGTK 4.1 development packages, build tools, Clang/libclang,
   Perl, and `zip`/`unzip` for packaging and archive tests.
 
-The editor uses the sibling `../x3fuse-core` checkout for RAW decoding and the
-in-repo `src-tauri/crates/x3f-render` crate for rendering. Keep the repositories
-next to one another:
-
-```text
-Developer/
-  x3fuse/
-  x3fuse-core/
-```
-
-Cargo uses relative path dependencies; `src-tauri/Cargo.lock` pins third-party
-versions. `npm run sync:resources` includes the renderer's GPL code notice and
+RAW decoding uses the pinned `x3f-core` Git dependency in
+`src-tauri/Cargo.toml`. The application and the in-repo `x3f-render` crate share
+that dependency. No sibling core checkout is required; `src-tauri/Cargo.lock`
+records the resolved versions. `npm run sync:resources` includes the renderer's GPL code notice and
 spectral-data attribution in the application. Original conversion does not require
 a GPU; editing requires Metal on macOS, DirectX 12 on Windows, or Vulkan on Linux.
 
@@ -81,23 +73,11 @@ This also checks full-strength denoising with compressed DNG/TIFF and DNG highli
 recovery, with a 60-second limit per conversion. Run it in the default test profile as shown
 to exercise the development-build settings; `--release` alone would miss regressions there.
 
-RAW decoding comes from the published `x3f-core` crate, pinned in `Cargo.toml` and
-locked in `Cargo.lock`, so CI needs no x3fuse-core checkout. Move to a newer core with
-`cargo update -p x3f-core` after that version is on crates.io.
-
-To build against a local x3fuse-core checkout instead, override the crate with a
-gitignored config in `src-tauri/`:
-
-```sh
-mkdir -p src-tauri/.cargo
-cat > src-tauri/.cargo/config.toml <<'TOML'
-[patch.crates-io]
-x3f-core = { path = "../../../x3fuse-core/crates/x3f-core" }
-TOML
-```
-
-While that override is in place Cargo rewrites `Cargo.lock` to drop the registry
-source and checksum, so don't commit the lockfile from a patched build.
+Core is pinned to fork `dev` commit
+`153cae4005920d86198593c4802809d27983a4bd`, which includes DNG look embedding and
+the reviewed highlight-recovery fix. To update it, change the workspace dependency's
+`rev` in `src-tauri/Cargo.toml`, run `cargo update -p x3f-core` from `src-tauri/`,
+and review the lockfile changes.
 
 Build a macOS app bundle with `npm run dist`, or a native executable with
 `npm run pack`. For Windows/Linux, use the executable build until installer targets
@@ -162,6 +142,37 @@ Developer ID signed and notarized using the same Apple credentials as stable
 releases. Windows and Linux builds are unsigned. No alpha build has an automatic
 updater. Record the alpha tag and OS when reporting results from the runtime
 acceptance checks below.
+
+## DNG looks
+
+Settings → **DNG look** offers None, **Merrill SPP 1.0**, and a custom DCP file.
+The initial selection is None. Settings saves the choice immediately, including
+the path of a custom file, and restores it on relaunch. The export review can
+override that choice for its batch; starting the batch saves those export settings.
+
+`profiles/merrill_spp_1_0.dcp` is packaged with the application. It is a
+Merrill-targeted SPP look available for testing with other cameras. Selecting a
+look applies it to every DNG export regardless of camera model. Core imports only
+the look table and tone curve, leaving raw samples and camera calibration intact.
+This does not change editor previews, rendered exports, or camera thumbnails.
+
+A custom DCP stays at its selected path; the app does not copy it. If it is moved,
+removed, or invalid, conversion reports an error rather than silently omitting
+the look. The bundled selection is stored by identity, not an installation path.
+
+## DNG post-processing
+
+Settings → **DNG post-processing** stores an optional command. It runs after each
+DNG has been saved under its final name, with JSON on stdin and the output folder
+as its working directory. Empty disables it. The export review can override it
+for a batch, independently of the selected look.
+
+A failed or cancelled hook reports a post-processing error and retains the
+published output. Commands run through `/bin/sh` on macOS/Linux and `cmd.exe` on
+Windows. No scripting runtime or preview renderer is bundled.
+
+See [the command contract](post-processing.md) for the JSON request, logging,
+concurrency, and cancellation behavior.
 
 ## Runtime acceptance
 

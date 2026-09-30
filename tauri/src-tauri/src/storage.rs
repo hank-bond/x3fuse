@@ -159,11 +159,59 @@ mod tests {
     }
 
     #[test]
+    fn dng_look_defaults_to_none_and_each_selection_survives_reload() {
+        use crate::model::DngLook;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let store = Preferences::load(path.clone());
+        assert_eq!(store.get().batch.dng_look, DngLook::None);
+        let custom = dir.path().join("色 look.dcp");
+        for look in [
+            DngLook::MerrillSpp10,
+            DngLook::Custom(custom),
+            DngLook::None,
+        ] {
+            store.set(serde_json::json!({"dngLook": look})).unwrap();
+            assert_eq!(Preferences::load(path.clone()).get().batch.dng_look, look);
+        }
+        assert!(store
+            .set(serde_json::json!({
+                "dngLook": {"kind": "custom", "path": "relative.dcp"}
+            }))
+            .is_err());
+        assert_eq!(Preferences::load(path).get().batch.dng_look, DngLook::None);
+    }
+
+    #[test]
+    fn post_processing_command_is_opt_in_and_persists() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let store = Preferences::load(path.clone());
+        assert!(store.get().batch.dng_post_processing_command.is_empty());
+        for command in ["tool --name '色 look'", ""] {
+            store
+                .set(serde_json::json!({"dngPostProcessingCommand": command}))
+                .unwrap();
+            assert_eq!(
+                Preferences::load(path.clone())
+                    .get()
+                    .batch
+                    .dng_post_processing_command,
+                command
+            );
+        }
+        assert!(store
+            .set(serde_json::json!({"dngPostProcessingCommand": "bad\0command"}))
+            .is_err());
+    }
+
+    #[test]
     fn layout_widths_round_trip_and_old_preferences_keep_defaults() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
         fs::write(&path, r#"{"sortAscending":false}"#).unwrap();
         let store = Preferences::load(path.clone());
+        assert_eq!(store.get().batch.dng_look, crate::model::DngLook::None);
         assert_eq!(store.get().inspector_width, 300);
         assert_eq!(store.get().export_panel_width, 380);
         assert_eq!(store.get().list_column_widths.name, 0);

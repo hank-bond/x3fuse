@@ -111,6 +111,25 @@ it('switches between the shared views while keeping the export targets fixed', a
   expect(useQueueStore.getState().draft).toBeNull()
 })
 
+it('offers post-processing only for DNG while keeping the saved command in the draft', async () => {
+  render(<ExportScreen />)
+  const field = screen.getByRole('textbox', { name: 'Command' })
+  fireEvent.change(field, { target: { value: 'my-tool --preview' } })
+  expect(useQueueStore.getState().draft!.settings.dngPostProcessingCommand).toBe(
+    'my-tool --preview'
+  )
+  expect(useSettingsStore.getState().settings.dngPostProcessingCommand).toBe('')
+  act(() => useQueueStore.getState().updateDraft({ outputFormat: 'tiff' }))
+  expect(screen.queryByRole('textbox', { name: 'Command' })).toBeNull()
+  expect(useQueueStore.getState().draft!.settings.dngPostProcessingCommand).toBe(
+    'my-tool --preview'
+  )
+  act(() => useQueueStore.getState().updateDraft({ outputFormat: 'dng' }))
+  expect((screen.getByRole('textbox', { name: 'Command' }) as HTMLTextAreaElement).value).toBe(
+    'my-tool --preview'
+  )
+})
+
 it('localizes the export image count', async () => {
   const language = i18n.language
   try {

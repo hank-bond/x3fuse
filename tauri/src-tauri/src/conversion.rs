@@ -153,7 +153,7 @@ fn progress(app: &AppHandle, batch: &str, file: &ConvertFile, value: f64) {
     );
 }
 
-pub fn process_options(settings: &BatchSettings, opcodes: PathBuf) -> x3f_core::ProcessOptions {
+pub fn process_options(settings: &BatchSettings, resources: PathBuf) -> x3f_core::ProcessOptions {
     x3f_core::ProcessOptions {
         color_encoding: match settings.color_profile {
             ColorProfile::Srgb => x3f_core::ColorEncoding::Srgb,
@@ -165,12 +165,22 @@ pub fn process_options(settings: &BatchSettings, opcodes: PathBuf) -> x3f_core::
         compress: settings.compress && settings.output_format != OutputFormat::Jpeg,
         dng_highlight_recovery: settings.output_format == OutputFormat::Dng
             && settings.dng_highlight_recovery,
+        dng_look: if settings.output_format == OutputFormat::Dng {
+            settings.dng_look.path(&resources)
+        } else {
+            None
+        },
         cineon: settings.output_format == OutputFormat::Tiff && settings.cineon,
         opcodes_dir: (settings.output_format == OutputFormat::Dng
             && !settings.dng_highlight_recovery)
-            .then_some(opcodes),
+            .then_some(resources.join("opcodes")),
         ..Default::default()
     }
+}
+
+enum FileOutcome {
+    Completed { warning: bool },
+    PostProcessingFailed,
 }
 
 async fn process_file(
@@ -180,7 +190,7 @@ async fn process_file(
     file: &ConvertFile,
     settings: &BatchSettings,
     approved: &HashSet<(String, PathBuf)>,
-) -> Result<bool, String> {
+) -> Result<FileOutcome, String> {
     let check = || {
         if state.cancel.load(Ordering::Relaxed) {
             Err("Export cancelled".to_string())
@@ -209,7 +219,7 @@ async fn process_file(
         .join(format!("output.{}", settings.output_format.extension()));
     let core_path = temp_path.clone();
     let input = file.path.clone();
-    let options = process_options(settings, state.resources.join("opcodes"));
+    let options = process_options(settings, state.resources.clone());
     let cancel = state.cancel.clone();
     let handle = app.clone();
     let batch_id = batch.to_string();
@@ -294,12 +304,41 @@ async fn process_file(
     }
     check()?;
     publish_approved(&temp_path, &target, &file.id, approved)?;
-    // After publication the validated file is complete, even if Stop arrives concurrently.
-    let warning = !warnings.is_empty();
-    let message = warnings.join("\n");
-    for warning in warnings {
+    state
+        .logs
+        .write("conversion", format!("Export saved: {}", target.display()));
+    for warning in &warnings {
         state.logs.write("conversion", warning);
     }
+    if crate::post_processing::enabled(settings) {
+        status(
+            app,
+            batch,
+            file,
+            "processing",
+            Some("Post-processing"),
+            Some(&target),
+        );
+    }
+    if let Err(error) = crate::post_processing::apply(
+        &file.path,
+        &target,
+        settings,
+        &state.resources,
+        &state.exif,
+        &state.cancel,
+    )
+    .await
+    {
+        let message = format!("Post-processing failed: {error}");
+        state
+            .logs
+            .write("error", format!("{}: {message}", target.display()));
+        status(app, batch, file, "failed", Some(&message), Some(&target));
+        return Ok(FileOutcome::PostProcessingFailed);
+    }
+    let warning = !warnings.is_empty();
+    let message = warnings.join("\n");
     progress(app, batch, file, 1.0);
     status(
         app,
@@ -313,7 +352,7 @@ async fn process_file(
         "conversion",
         format!("Export completed: {}", target.display()),
     );
-    Ok(warning)
+    Ok(FileOutcome::Completed { warning })
 }
 
 fn publish_approved(
@@ -410,10 +449,13 @@ pub async fn run_batch(
                     )
                     .await
                     {
-                        Ok(warning) => {
+                        Ok(FileOutcome::Completed { warning }) => {
                             let mut s = summary.lock().unwrap();
                             s.completed += 1;
                             s.warnings += usize::from(warning);
+                        }
+                        Ok(FileOutcome::PostProcessingFailed) => {
+                            summary.lock().unwrap().failed += 1;
                         }
                         Err(_) if state.cancel.load(Ordering::Relaxed) => {
                             status(&app, &request.batch_id, &file, "queued", None, None)
@@ -595,6 +637,45 @@ mod tests {
         publish(&temp, &target, true).unwrap();
         assert_eq!(std::fs::read(&target).unwrap(), b"replacement");
     }
+    #[test]
+    fn looks_only_apply_to_dng_exports() {
+        let resources = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources");
+        let mut settings = BatchSettings::default();
+        assert!(process_options(&settings, resources.clone())
+            .dng_look
+            .is_none());
+        for look in [
+            DngLook::MerrillSpp10,
+            DngLook::Custom(resources.join("custom.dcp")),
+        ] {
+            settings.dng_look = look.clone();
+            for format in [
+                OutputFormat::Dng,
+                OutputFormat::Tiff,
+                OutputFormat::Jpeg,
+                OutputFormat::RenderedJpeg,
+            ] {
+                settings.output_format = format;
+                let expected = if format == OutputFormat::Dng {
+                    look.path(&resources)
+                } else {
+                    None
+                };
+                assert_eq!(
+                    process_options(&settings, resources.clone()).dng_look,
+                    expected
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn bundled_look_is_readable() {
+        let path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../profiles/merrill_spp_1_0.dcp");
+        x3f_core::dcp::DcpLook::open(path).unwrap();
+    }
+
     #[test]
     fn option_mapping_keeps_highlight_recovery_and_opcodes_exclusive() {
         let mut settings = BatchSettings::default();

@@ -4299,7 +4299,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
@@ -5772,8 +5772,7 @@ dependencies = [
 [[package]]
 name = "x3f-core"
 version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34e37920904244df903e13ac42953d8a3560cf70f3e68ae69989fcb8a317284e"
+source = "git+https://github.com/hank-bond/x3fuse-core?rev=153cae4005920d86198593c4802809d27983a4bd#153cae4005920d86198593c4802809d27983a4bd"
 dependencies = [
  "libc",
  "rayon",
@@ -5802,8 +5801,7 @@ dependencies = [
 [[package]]
 name = "x3f-sys"
 version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7a5381d2b0274e8377b63c6c6ec8bd53ffcdb0c6968b746f6690a8c1eca1521"
+source = "git+https://github.com/hank-bond/x3fuse-core?rev=153cae4005920d86198593c4802809d27983a4bd#153cae4005920d86198593c4802809d27983a4bd"
 dependencies = [
  "bindgen",
  "cc",

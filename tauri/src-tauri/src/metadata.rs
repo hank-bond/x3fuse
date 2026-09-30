@@ -144,6 +144,28 @@ impl ExifTool {
         .map(|_| ())
     }
 
+    pub async fn hook_metadata(&self, input: &Path, cancel: &AtomicBool) -> Result<Value, String> {
+        let bytes = self
+            .run(
+                vec![
+                    "-charset".into(),
+                    "filename=UTF8".into(),
+                    "-json".into(),
+                    "-Model".into(),
+                    "-Aperture".into(),
+                    "-LensID".into(),
+                    input.into(),
+                ],
+                Some(cancel),
+            )
+            .await?;
+        let mut objects: Vec<Value> = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+        objects
+            .pop()
+            .filter(Value::is_object)
+            .ok_or("Missing hook metadata".into())
+    }
+
     pub async fn preview(&self, path: &Path, full: bool) -> Result<Option<Vec<u8>>, String> {
         let tags: &[&str] = if full {
             &["JpgFromRaw"]
